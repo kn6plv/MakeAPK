@@ -260,11 +260,32 @@ def main() -> None:
 
         info_msg("Collecting files")
 
-        # ── data tarball ─────────────────────────────────────────────────────
-        data_paths = _walk_sorted(data_dir)
-        if not data_paths:
+        # ── package manifest ─────────────────────────────────────────────────
+        # Build a file at lib/apk/packages/<NAME> listing every data file
+        # (excluding itself).  We collect paths first, write the manifest,
+        # then re-scan so the manifest is included in the tarball.
+        manifest_rel = f"lib/apk/packages/{args.name}.list"
+        manifest_abs = os.path.join(data_dir, manifest_rel)
+        os.makedirs(os.path.dirname(manifest_abs), exist_ok=True)
+
+        # Collect all current data paths (before the manifest exists).
+        pre_paths = _walk_sorted(data_dir)
+        if not pre_paths:
             ap.error("source directory is empty (no files to package)")
 
+        # Write the manifest: one path per line, files only (not dirs),
+        # excluding the manifest itself.
+        manifest_lines = [
+            p for p in pre_paths
+            if not os.path.isdir(os.path.join(data_dir, p))
+        ]
+        with open(manifest_abs, "w") as f:
+            f.write("\n".join(manifest_lines) + "\n")
+
+        # Re-scan so the manifest and its parent dirs are included.
+        data_paths = _walk_sorted(data_dir)
+
+        # ── data tarball ─────────────────────────────────────────────────────
         data_tar = _make_tar_bytes(data_dir, data_paths,
                                    include_hash=True, include_eof=True)
         data_gz = _gzip_compress(data_tar)
